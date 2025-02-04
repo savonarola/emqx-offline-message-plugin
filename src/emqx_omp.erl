@@ -4,49 +4,65 @@
 
 -module(emqx_omp).
 
-
 -include("emqx_omp.hrl").
 -include_lib("emqx/include/emqx.hrl").
 -include_lib("emqx/include/logger.hrl").
 
 -export([
-    action/3,
-    load/0,
+    load/1,
     unload/0
 ]).
 
--type event_message_acked() :: #{
-    event := 'message.acked',
-    node := node(),
-    timestamp := integer(),
-    _ => _
-}.
-
--type event_session_subscribed() :: #{
-    event := 'session.subscribed',
-    node := node(),
-    timestamp := integer(),
-    _ => _
-}.
-
--type opts() :: map().
--type resource_id() :: binary().
-
--callback on_message_acked(event_message_acked(), resource_id(), opts()) -> ok | error.
--callback on_session_subscribed(event_session_subscribed(), resource_id(), opts()) -> ok | error.
+-export([
+    on_config_changed/2
+]).
 
 %%--------------------------------------------------------------------
 %% Load/Unload
 %%--------------------------------------------------------------------
 
--spec load() -> ok | error.
-load() ->
+-spec load(map()) -> ok | error.
+load(#{<<"mysql">> := RawConfig0}) ->
+    ?SLOG(info, #{msg => "omp_load", raw_config => RawConfig0}),
     emqx_metrics_worker:create_metrics(
         ?METRICS_WORKER, message_acked, [success, fail]
     ),
     emqx_metrics_worker:create_metrics(
         ?METRICS_WORKER, session_subscribed, [success, fail]
     ),
+
+    #{
+        <<"delete_message_sql">> := _DeleteMessageSql,
+        <<"insert_message_sql">> := _InsertMessageSql,
+        <<"select_message_sql">> := _SelectMessageSql
+    } = RawConfig0,
+
+    RawConfig1 = maps:without(
+        [<<"delete_message_sql">>, <<"insert_message_sql">>, <<"select_message_sql">>, <<"enable">>], RawConfig0
+    ),
+
+    {ok, #{config := Config}} = emqx_hocon:check(
+        emqx_omp_mysql_schema,
+        #{<<"config">> => RawConfig1},
+        #{atom_key => true}),
+
+    ResourceOpts = #{
+        start_after_created => true
+    },
+    ResourceGroup = <<"omp">>,
+    ResourceId = <<"omp_mysql">>,
+    Module = emqx_mysql,
+
+    Result = emqx_resource:create_local(
+        ResourceId,
+        ResourceGroup,
+        Module,
+        Config,
+        ResourceOpts
+    ),
+
+    ?SLOG(info, #{msg => "omp_load", config => Config, result => Result}),
+
     ok.
 
 -spec unload() -> ok | error.
@@ -54,34 +70,20 @@ unload() ->
     ok.
 
 %%--------------------------------------------------------------------
+%% EMQX Plugin callbacks
+%%--------------------------------------------------------------------
+
+-spec on_config_changed(map(), map()) -> ok.
+on_config_changed(OldConf, NewConf) ->
+    ?SLOG(info, #{
+        msg => "offline_message_plugin_config_changed", old_conf => OldConf, new_conf => NewConf
+    }),
+    ok.
+
+%%--------------------------------------------------------------------
 %% Action
 %%--------------------------------------------------------------------
-action(_Selected, Envs, #{connector_name := ConnectorName, opts := Opts}) ->
-    case module_name(ConnectorName) of
-        {ok, Module} ->
-            action(Module, Envs, ConnectorName, Opts);
-        {error, _} = Error ->
-            Error
-    end;
-action(_Selected, _Envs, _Args) ->
-    ?SLOG(warning, #{msg => "unknown_event", selected => _Selected, envs => _Envs, args => _Args}),
-    ok.
 
 %%--------------------------------------------------------------------
 %% Internal functions
 %%--------------------------------------------------------------------
-
-action(Module, #{event := 'message.acked'} = Envs, ConnectorName, Opts) ->
-    Module:on_message_acked(Envs, ConnectorName, Opts);
-action(Module, #{event := 'session.subscribed'} = Envs, ConnectorName, Opts) ->
-    Module:on_session_subscribed(Envs, ConnectorName, Opts);
-action(_Module, _Envs, _ConnectorName, _Opts) ->
-    ?SLOG(warning, #{msg => "unknown_event", envs => _Envs, connector_name => _ConnectorName, opts => _Opts}),
-    ok.
-
-module_name(<<"redis:", _/binary>>) ->
-    {ok, emqx_omp_redis};
-module_name(<<"mysql:", _/binary>>) ->
-    {ok, emqx_omp_mysql};
-module_name(ConnectorName) ->
-    {error, {unknown_connector_type, ConnectorName}}.

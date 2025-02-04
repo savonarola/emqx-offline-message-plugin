@@ -7,8 +7,6 @@
 -include_lib("emqx/include/emqx.hrl").
 -include_lib("emqx/include/logger.hrl").
 
--behaviour(emqx_omp).
-
 -export([
     on_message_acked/3,
     on_session_subscribed/3
