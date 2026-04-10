@@ -1,5 +1,7 @@
 [![CI](https://github.com/emqx/emqx-offline-message-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/emqx/emqx-offline-message-plugin/actions/workflows/ci.yml)
 
+NOTE: For EMQX 6.2 or later, the source code of this plugin is moved to the monorepo [emqx/emqx.git](https://github.com/emqx/emqx/tree/master/plugins).
+
 # EMQX Offline Message Plugin
 
 This plugin can be used to store messages in a 3rd party database. It allows you to publish messages to a topic even when there are no subscribers online, and the messages will be stored until a subscriber comes online.
