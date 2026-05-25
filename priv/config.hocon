@@ -10,7 +10,6 @@ mysql {
     }
     server = "mysql:3306"
     pool_size = 8
-    username = "emqx"
     password = "public"
     database = "emqx"
     topics = []
@@ -39,7 +38,6 @@ redis {
     redis_type = "single"
     sentinel = ""
     pool_size = 8
-    username = ""
     password = "public"
     topics = []
     message_key_prefix = "mqtt:msg"
@@ -49,9 +47,3 @@ redis {
     batch_size = 1
     batch_time = 100
 }
-
-
-
-
-
-

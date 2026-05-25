@@ -17,8 +17,6 @@ start_link() ->
 
 init([]) ->
     ChildSpecs = [
-        emqx_metrics_worker:child_spec(?METRICS_WORKER),
-        emqx_omp:child_spec()
     ],
     SupFlags = #{
         strategy => one_for_all,

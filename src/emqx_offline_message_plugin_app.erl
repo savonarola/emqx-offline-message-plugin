@@ -4,8 +4,6 @@
 
 -module(emqx_offline_message_plugin_app).
 
--include_lib("emqx_plugin_helper/include/logger.hrl").
-
 -behaviour(application).
 
 -emqx_plugin(?MODULE).
@@ -29,8 +27,8 @@ start(_StartType, _StartArgs) ->
 stop(_State) ->
     ok.
 
-on_config_changed(OldConf, NewConf) ->
-    emqx_omp:on_config_changed(OldConf, NewConf).
+on_config_changed(_OldConf, _NewConf) ->
+    ok.
 
 on_health_check(_Options) ->
-    emqx_omp:on_health_check().
+    ok.

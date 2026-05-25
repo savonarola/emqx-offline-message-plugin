@@ -1,237 +1,25 @@
 services:
-  emqx:
-    image: emqx/emqx-enterprise:6.0.0
-    container_name: emqx
-    environment:
-      EMQX_LOG__CONSOLE__LEVEL: debug
-      EMQX_API_KEY__BOOTSTRAP_FILE: "/opt/emqx-bootstrap/api-keys.txt"
-    ports:
-      - "1883:1883"
-      - "8083:8083"
-      - "18083:18083"
-    networks:
-      - emqx_network
-    healthcheck:
-      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
-      interval: 5s
-      timeout: 25s
-      retries: 5
-    volumes:
-      - ./test/assets/certs:/certs:ro
-      - ./test/assets/api-keys.txt:/opt/emqx-bootstrap/api-keys.txt:ro
-    depends_on:
-      mysql:
-        condition: service_healthy
-      mysql-ssl:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  mysql:
-    image: mysql:8.0
-    container_name: mysql
-    command: --default-authentication-plugin=mysql_native_password
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: public
-      MYSQL_DATABASE: emqx
-      MYSQL_USER: emqx
-      MYSQL_PASSWORD: public
-    ports:
-      - "3306:3306"
-    networks:
-      - emqx_network
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
-      interval: 5s
-      timeout: 25s
-      retries: 5
-
-  mysql-ssl:
-    image: mysql:8.0
-    container_name: mysql-ssl
-    command: >
-      --default-authentication-plugin=mysql_native_password
-      --ssl-ca=/certs/ca.crt
-      --ssl-cert=/certs/mysql-server.crt
-      --ssl-key=/certs/mysql-server.key
-      --require-secure-transport=ON
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: public
-      MYSQL_DATABASE: emqx
-      MYSQL_USER: emqx
-      MYSQL_PASSWORD: public
-    ports:
-      - "3307:3306"
-    volumes:
-      - ./test/assets/certs:/certs:ro
-    networks:
-      - emqx_network
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
-      interval: 5s
-      timeout: 25s
-      retries: 5
-
-  redis:
-    image: redis:7.0
-    container_name: redis
-    command: redis-server --requirepass public
-    ports:
-      - "6379:6379"
-    networks:
-      - emqx_network
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "public", "ping"]
-      interval: 5s
-      timeout: 25s
-      retries: 5
-
-  redis-ssl:
-    image: redis:7.0
-    container_name: redis-ssl
-    command: >
-      redis-server
-      --requirepass public
-      --tls-port 6380
-      --port 0
-      --tls-cert-file /certs/redis-server.crt
-      --tls-key-file /certs/redis-server.key
-      --tls-ca-cert-file /certs/ca.crt
-    ports:
-      - "6380:6380"
-    volumes:
-      - ./test/assets/certs:/certs:ro
-    networks:
-      - emqx_network
-    healthcheck:
-      test:
-        - "CMD"
-        - "redis-cli"
-        - "--tls"
-        - "--cert"
-        - "/certs/redis-server.crt"
-        - "--key"
-        - "/certs/redis-server.key"
-        - "--cacert"
-        - "/certs/ca.crt"
-        - "-h"
-        - "localhost"
-        - "-p"
-        - "6380"
-        - "-a"
-        - "public"
-        - "ping"
-      timeout: 25s
-      retries: 5
-
-  redis-cluster-node-1:
-    image: redis:7.0
-    container_name: redis-cluster-node-1
-    command: redis-server --requirepass public --masterauth public --port 7001 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000
-    ports:
-      - "7001:7001"
-    networks:
-      - emqx_network
-    healthcheck:
-      test: ["CMD", "redis-cli", "-p", "7001", "ping"]
-      interval: 5s
-      timeout: 25s
-      retries: 5
-
-  redis-cluster-node-2:
-    image: redis:7.0
-    container_name: redis-cluster-node-2
-    command: redis-server --requirepass public --masterauth public --port 7002 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000
-    ports:
-      - "7002:7002"
-    networks:
-      - emqx_network
-    healthcheck:
-      test: ["CMD", "redis-cli", "-p", "7002", "ping"]
-      interval: 5s
-      timeout: 25s
-      retries: 5
-
-  redis-cluster-node-3:
-    image: redis:7.0
-    container_name: redis-cluster-node-3
-    command: redis-server --requirepass public --masterauth public --port 7003 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000
-    ports:
-      - "7003:7003"
-    networks:
-      - emqx_network
-    healthcheck:
-      test: ["CMD", "redis-cli", "-p", "7003", "ping"]
-      interval: 5s
-      timeout: 25s
-      retries: 5
-
-  redis-cluster-setup:
-    image: redis:7.0
-    container_name: redis-cluster-setup
-    depends_on:
-      redis-cluster-node-1:
-        condition: service_healthy
-      redis-cluster-node-2:
-        condition: service_healthy
-      redis-cluster-node-3:
-        condition: service_healthy
-    entrypoint: sh -c "redis-cli --cluster create redis-cluster-node-1:7001 redis-cluster-node-2:7002 redis-cluster-node-3:7003 --cluster-replicas 0 --cluster-yes -a public"
-    networks:
-      - emqx_network
-
-  redis-master:
-    image: redis:7.0
-    container_name: redis-master
-    command: redis-server --requirepass public --masterauth public --port 8001
-    ports:
-      - "8001:8001"
-    networks:
-      - emqx_network
-    healthcheck:
-      test: ["CMD", "redis-cli", "-p", "8001", "-a", "public", "ping"]
-      interval: 5s
-      timeout: 25s
-      retries: 5
-
-  redis-slave:
-    image: redis:7.0
-    container_name: redis-slave
-    command: redis-server --requirepass public --masterauth public --port 8002 --replicaof redis-master 8001
-    ports:
-      - "8002:8002"
-    networks:
-      - emqx_network
-    depends_on:
-      redis-master:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "redis-cli", "-p", "8002", "-a", "public", "ping"]
-      interval: 5s
-      timeout: 25s
-      retries: 5
-
-  redis-sentinel:
-    image: redis:7.0
-    container_name: redis-sentinel
-    command: >
-      bash -c "
-        echo 'sentinel monitor mymaster redis-master 8001 1' > sentinel.conf
-        echo 'sentinel auth-pass mymaster public' >> sentinel.conf
-        echo 'sentinel down-after-milliseconds mymaster 5000' >> sentinel.conf
-        echo 'sentinel parallel-syncs mymaster 1' >> sentinel.conf
-        echo 'sentinel failover-timeout mymaster 10000' >> sentinel.conf
-        echo 'sentinel resolve-hostnames yes' >> sentinel.conf
-        redis-sentinel sentinel.conf --port 26379
-      "
-    networks:
-      - emqx_network
-    depends_on:
-      redis-slave:
-        condition: service_healthy
+    emqx:
+        image: emqx/emqx-enterprise:6.2.0
+        container_name: emqx
+        environment:
+            EMQX_LOG__CONSOLE__LEVEL: debug
+            EMQX_API_KEY__BOOTSTRAP_FILE: "/opt/emqx-bootstrap/api-keys.txt"
+        ports:
+            - "1883:1883"
+            - "8083:8083"
+            - "18083:18083"
+        networks:
+            - emqx_network
+        healthcheck:
+            test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+            interval: 5s
+            timeout: 25s
+            retries: 5
+        volumes:
+            - ./test/assets/certs:/certs:ro
+            - ./test/assets/api-keys.txt:/opt/emqx-bootstrap/api-keys.txt:ro
 
 networks:
-  emqx_network:
-    driver: bridge
+    emqx_network:
+        driver: bridge
